@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# VibeDictate launcher.
+#
+# Selects the bundled virtualenv interpreter, wires up the pip-installed CUDA
+# libraries and loads user settings before starting the daemon. systemd runs
+# this file, never daemon.py directly: an EnvironmentFile= cannot source shell
+# syntax and the unit would otherwise pick the system interpreter, which has no
+# speech engine installed.
+
+set -euo pipefail
+
+# Resolve the real installation directory even when reached through a symlink.
+target="${BASH_SOURCE[0]}"
+while [ -L "$target" ]; do
+    link="$(readlink "$target")"
+    case "$link" in
+        /*) target="$link" ;;
+        *) target="$(dirname "$target")/$link" ;;
+    esac
+done
+APP_DIR="$(cd "$(dirname "$target")" && pwd)"
+export VD_APP_DIR="$APP_DIR"
+
+# Keep model downloads inside the application directory so uninstalling is a
+# single removal and nothing pollutes the user's cache.
+export HF_HOME="${HF_HOME:-$APP_DIR/models}"
+
+# User settings. Plain shell, sourced here, so $HOME and ${VAR:-default} work.
+if [ -f "$APP_DIR/env.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$APP_DIR/env.sh"
+fi
+
+if [ -x "$APP_DIR/.venv/bin/python" ]; then
+    PYTHON="$APP_DIR/.venv/bin/python"
+else
+    PYTHON="$(command -v python3 || true)"
+    if [ -z "$PYTHON" ]; then
+        echo "VibeDictate: no Python interpreter found. Re-run install.sh." >&2
+        exit 1
+    fi
+    echo "VibeDictate: virtualenv missing, falling back to $PYTHON" >&2
+fi
+
+# ctranslate2 loads cuBLAS and cuDNN through the dynamic linker, so their pip
+# wheel directories must be on LD_LIBRARY_PATH before the process starts. The
+# interpreter itself reports its site-packages: never hardcode a Python version.
+if SITE_PACKAGES="$("$PYTHON" -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null)"; then
+    cuda_paths=""
+    for lib in cublas cudnn cuda_runtime cuda_nvrtc; do
+        dir="$SITE_PACKAGES/nvidia/$lib/lib"
+        [ -d "$dir" ] && cuda_paths="${cuda_paths:+$cuda_paths:}$dir"
+    done
+    if [ -n "$cuda_paths" ]; then
+        export LD_LIBRARY_PATH="${cuda_paths}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
+fi
+
+exec "$PYTHON" "$APP_DIR/daemon.py" "$@"

@@ -1,0 +1,37 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Local settings. Users copy env.sh.example to env.sh; it is never committed.
+env.sh
+
+# Downloaded model weights and cache
+models/
+*.bin
+*.onnx
+*.pt
+*.safetensors
+
+# Python bytecode and tooling caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+build/
+dist/
+
+# Captured audio and logs
+*.raw
+*.wav
+*.log
+
+# OS and editor files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~

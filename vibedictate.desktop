@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=VibeDictate
+GenericName=Voice Dictation
+Comment=Start, stop and monitor the local voice dictation daemon
+Exec=@PREFIX@/vibedictate-gui.py
+Icon=audio-input-microphone
+Terminal=false
+Categories=Utility;Accessibility;AudioVideo;
+Keywords=dictation;voice;speech;transcription;microphone;
+StartupNotify=true

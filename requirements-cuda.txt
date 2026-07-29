@@ -1,0 +1,13 @@
+# Optional NVIDIA GPU acceleration.
+#
+# ctranslate2 4.x loads cuBLAS and cuDNN through the dynamic linker and requires
+# CUDA 12 with cuDNN 9. Installing these wheels means no system-wide CUDA
+# toolkit is needed; the launcher puts them on LD_LIBRARY_PATH automatically.
+#
+# Skip this file entirely on CPU-only machines or AMD/Intel GPUs: the daemon
+# detects the missing GPU and runs on the CPU with int8 quantisation.
+#
+# Verified against PyPI on 2026-07-29.
+
+nvidia-cublas-cu12>=12.3,<13
+nvidia-cudnn-cu12>=9,<10

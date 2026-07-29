@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall -q daemon.py vibedictate-gui.py
+          python -c "import ast; ast.parse(open('vibedictate-toggle').read())"
+
+      - name: Lint Python
+        run: |
+          pipx install ruff
+          ruff check --select E9,F63,F7,F82,F401,F841 daemon.py vibedictate-gui.py
+
+      - name: Check shell syntax
+        run: bash -n install.sh uninstall.sh vibedictate-daemon
+
+      - name: Lint shell
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck install.sh uninstall.sh vibedictate-daemon
+
+      - name: Validate desktop entry
+        run: |
+          sudo apt-get install -y -qq desktop-file-utils
+          sed 's|@PREFIX@|/opt/vibedictate|' vibedictate.desktop > /tmp/vibedictate.desktop
+          desktop-file-validate /tmp/vibedictate.desktop
+
+  install:
+    name: Clean installation
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # No GPU, no audio server and no display on the runner: this proves the
+      # installer degrades cleanly instead of failing.
+      - name: Install into a temporary prefix
+        run: |
+          ./install.sh --yes --skip-system-deps --skip-cuda \
+            --prefix "$RUNNER_TEMP/vibedictate"
+
+      - name: The launcher must select the virtualenv interpreter
+        run: |
+          set -e
+          report="$("$RUNNER_TEMP/vibedictate/vibedictate-daemon" --check || true)"
+          echo "$report"
+          echo "$report" | grep -q "vibedictate/.venv/bin/python" \
+            || { echo "launcher did not use the virtualenv"; exit 1; }
+          echo "$report" | grep -q "engine           installed" \
+            || { echo "speech engine missing from the virtualenv"; exit 1; }
+
+      - name: Settings must reach the daemon
+        run: |
+          set -e
+          echo 'export VD_MODEL="ci-sentinel-model"' >> "$RUNNER_TEMP/vibedictate/env.sh"
+          "$RUNNER_TEMP/vibedictate/vibedictate-daemon" --check | grep -q "ci-sentinel-model" \
+            || { echo "env.sh was not sourced by the launcher"; exit 1; }
+
+      - name: Uninstall must leave nothing behind
+        run: |
+          ./uninstall.sh --yes --prefix "$RUNNER_TEMP/vibedictate"
+          test ! -d "$RUNNER_TEMP/vibedictate" || { echo "prefix survived uninstall"; exit 1; }

@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""
+VibeDictate control client.
+
+Bind this to a global hotkey. It sends a one-word command to the daemon over
+its private UNIX socket and exits immediately.
+
+Usage: vibedictate-toggle [toggle|start|stop|status|ping|quit]
+"""
+
+from __future__ import annotations
+
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+from shutil import which
+
+VALID = ("toggle", "start", "stop", "status", "ping", "quit")
+
+
+def socket_path() -> str:
+    override = os.environ.get("VD_SOCKET", "").strip()
+    if override:
+        return override
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    if not runtime or not os.path.isdir(runtime):
+        runtime = os.path.join(tempfile.gettempdir(), f"vibedictate-{os.getuid()}")
+    return os.path.join(runtime, "vibedictate.sock")
+
+
+def alert(title: str, body: str) -> None:
+    if which("notify-send"):
+        # Argument list, never a shell string: the body carries error text that
+        # must not be reinterpreted by a shell.
+        subprocess.run(
+            ["notify-send", "-u", "critical", "-a", "VibeDictate", title, body],
+            check=False,
+            capture_output=True,
+            timeout=5,
+        )
+
+
+def main() -> int:
+    command = sys.argv[1].lower() if len(sys.argv) > 1 else "toggle"
+    if command in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0
+    if command not in VALID:
+        print(f"unknown command '{command}'; expected one of: {', '.join(VALID)}", file=sys.stderr)
+        return 2
+
+    path = socket_path()
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(5.0)
+    try:
+        client.connect(path)
+        client.sendall(command.encode())
+        reply = client.recv(64).decode("utf-8", "ignore").strip()
+    except (FileNotFoundError, ConnectionRefusedError):
+        alert(
+            "VibeDictate is not running",
+            "Start it with: systemctl --user start vibedictate.service",
+        )
+        print(f"no daemon listening on {path}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        alert("VibeDictate error", str(exc))
+        print(f"{path}: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        client.close()
+
+    if command == "status":
+        print(reply or "unknown")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

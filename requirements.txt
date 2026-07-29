@@ -1,0 +1,8 @@
+# VibeDictate runtime dependencies.
+# Verified against PyPI on 2026-07-29.
+#
+# Minor versions are allowed so security fixes land automatically, while major
+# versions stay pinned because they change the inference API.
+
+faster-whisper~=1.2.1
+numpy>=1.24,<3

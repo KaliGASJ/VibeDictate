@@ -1,0 +1,22 @@
+[Unit]
+Description=VibeDictate local voice dictation daemon
+Documentation=https://github.com/KaliGASJ/VibeDictate
+# The daemon needs WAYLAND_DISPLAY / DISPLAY and the session D-Bus to inject
+# text, so it must not start before the graphical session exists.
+After=graphical-session.target
+PartOf=graphical-session.target
+# Give up instead of restarting forever when the installation is broken.
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/VibeDictate/vibedictate-daemon
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+KillMode=mixed
+SyslogIdentifier=vibedictate
+
+[Install]
+WantedBy=graphical-session.target
