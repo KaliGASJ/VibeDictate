@@ -86,6 +86,14 @@ class ControlPanel(Gtk.Application):
     # -- window ---------------------------------------------------------------
 
     def do_activate(self) -> None:
+        # Relaunching the app re-runs do_activate on this same instance instead
+        # of spawning a process. Without this guard every relaunch stacked one
+        # more refresh timeout that is never cancelled (refresh returns True),
+        # and each tick queries the daemon and may fork a systemctl call.
+        if getattr(self, "window", None) is not None:
+            self.window.present()
+            return
+
         title = "VibeDictate"
         self.status = Gtk.Label(label="Checking…")
         self.status.set_use_markup(True)
