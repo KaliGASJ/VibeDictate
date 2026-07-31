@@ -802,10 +802,25 @@ def main() -> None:
     def transcribe_async() -> None:
         threading.Thread(target=recorder.stop_and_transcribe, daemon=True).start()
 
+    # A wedged listening socket makes accept() return without blocking, and the
+    # bare loop would then spawn threads as fast as the CPU allows. Measured on
+    # a laptop: 22k threads/s, 1.5 cores, an extra 35 W. Bail out instead.
+    spin = 0
+    last_accept = time.time()
+
     while not stopping.is_set():
         try:
             conn, _ = server.accept()
         except OSError:
+            break
+
+        now = time.time()
+        spin = spin + 1 if now - last_accept < 1.0 else 0
+        last_accept = now
+        if spin > 2000:
+            log_error("accept() is spinning; stopping so it cannot drain the battery")
+            notify(f"{APP}: connection loop", "the daemon stopped to protect the battery",
+                   urgency="critical", duration_ms=8000)
             break
 
         try:
@@ -816,7 +831,7 @@ def main() -> None:
                 reply = b"pong"
             elif command == "status":
                 reply = b"recording" if recorder.is_recording else b"idle"
-            elif command in ("toggle", ""):
+            elif command == "toggle":
                 if recorder.is_recording:
                     transcribe_async()
                 else:

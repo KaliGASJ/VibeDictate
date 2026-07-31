@@ -11,6 +11,7 @@ which is not part of the daemon's virtualenv.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import socket
 import subprocess
@@ -141,8 +142,20 @@ class ControlPanel(Gtk.Application):
             self.window.set_position(Gtk.WindowPosition.CENTER)
             self.window.show_all()
 
-        GLib.timeout_add_seconds(2, self.refresh)
+        self.window.connect(
+            "close-request" if GTK_VERSION == 4 else "delete-event", self.on_close
+        )
+        self.timeout_id = GLib.timeout_add_seconds(2, self.refresh)
         self.refresh()
+
+    def on_close(self, *_args) -> bool:
+        # Drop the polling timeout and forget the window, so a later activation
+        # builds a fresh one instead of calling present() on a dead widget.
+        if getattr(self, "timeout_id", None) is not None:
+            GLib.source_remove(self.timeout_id)
+            self.timeout_id = None
+        self.window = None
+        return False
 
     # -- state ----------------------------------------------------------------
 
@@ -205,4 +218,19 @@ class ControlPanel(Gtk.Application):
 
 
 if __name__ == "__main__":
+    # Safety net for when Gtk.Application fails to deduplicate over D-Bus: each
+    # extra copy polls the daemon on its own timer, and a second window adds
+    # load without showing the user anything new.
+    _lock = open(
+        os.path.join(
+            os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(),
+            f"vibedictate-gui-{os.getuid()}.lock",
+        ),
+        "w",
+    )
+    try:
+        fcntl.flock(_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit(0)
+
     sys.exit(ControlPanel().run(sys.argv))
